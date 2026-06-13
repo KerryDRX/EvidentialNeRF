@@ -1,0 +1,22 @@
+[project]
+name = "nerfstudio_uncertainty"
+description = "NeRF uncertainty quantification."
+version = "1.0.0"
+
+dependencies = ["nerfstudio == 1.1.4"]
+
+[tool.setuptools.packages.find]
+include = ["nerfstudio_uncertainty"]
+
+[project.entry-points.'nerfstudio.dataparser_configs']
+lf = 'nerfstudio_uncertainty.dataparsers.configs:lfDataparser'
+llff = 'nerfstudio_uncertainty.dataparsers.configs:llffDataparser'
+robustnerf = 'nerfstudio_uncertainty.dataparsers.configs:robustnerfDataparser'
+phototourism = 'nerfstudio_uncertainty.dataparsers.configs:phototourismDataparser'
+
+[project.entry-points.'nerfstudio.method_configs']
+nerfacto = 'nerfstudio_uncertainty.methods.configs:nerfacto_method'
+nerfacto-dropout = 'nerfstudio_uncertainty.methods.configs:nerfacto_dropout_method'
+nerfacto-normal = 'nerfstudio_uncertainty.methods.configs:nerfacto_normal_method'
+nerfacto-mol = 'nerfstudio_uncertainty.methods.configs:nerfacto_mol_method'
+nerfacto-evidential = 'nerfstudio_uncertainty.methods.configs:nerfacto_evidential_method'

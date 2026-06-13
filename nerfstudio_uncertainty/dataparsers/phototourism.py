@@ -1,0 +1,125 @@
+from __future__ import annotations
+import math
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal, Type
+import numpy as np
+import torch
+from nerfstudio.cameras import camera_utils
+from nerfstudio.cameras.cameras import Cameras, CameraType
+from nerfstudio.data.dataparsers.base_dataparser import DataParser, DataParserConfig, DataparserOutputs
+from nerfstudio.data.scene_box import SceneBox
+from nerfstudio.data.utils.colmap_parsing_utils import read_cameras_binary, read_images_binary
+from nerfstudio.utils.rich_utils import CONSOLE
+
+
+@dataclass
+class PhototourismConfig(DataParserConfig):
+    _target: Type = field(default_factory=lambda: Phototourism)
+    """target class to instantiate"""
+    data: Path = Path("data/phototourism/brandenburg-gate")
+    """Directory specifying location of data."""
+    scale_factor: float = 3.0
+    """How much to scale the camera origins by."""
+    train_split_fraction: float = 0.9
+    """The fraction of images to use for training. The remaining images are for eval."""
+    scene_scale: float = 1.0
+    """How much to scale the region of interest by."""
+    orientation_method: Literal["pca", "up", "vertical", "none"] = "up"
+    """The method to use for orientation."""
+    center_method: Literal["poses", "focus", "none"] = "poses"
+    """The method to use to center the poses."""
+    auto_scale_poses: bool = True
+    """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
+
+
+@dataclass
+class Phototourism(DataParser):
+    config: PhototourismConfig
+    def __init__(self, config: PhototourismConfig):
+        super().__init__(config=config)
+        self.data: Path = config.data
+
+    def _generate_dataparser_outputs(self, split="train"):
+        image_filenames = []
+        poses = []
+
+        with CONSOLE.status(f"[bold green]Reading phototourism images and poses for {split} split...") as _:
+            cams = read_cameras_binary(self.data / "dense/sparse/cameras.bin")
+            imgs = read_images_binary(self.data / "dense/sparse/images.bin")
+
+        poses = []
+        fxs = []
+        fys = []
+        cxs = []
+        cys = []
+        image_filenames = []
+
+        flip = torch.eye(3)
+        flip[0, 0] = -1.0
+        flip = flip.double()
+        for _id, cam in cams.items():
+            img = imgs[_id]
+            assert cam.model == "PINHOLE", "Only pinhole (perspective) camera model is supported at the moment"
+            pose = torch.cat([torch.tensor(img.qvec2rotmat()), torch.tensor(img.tvec.reshape(3, 1))], dim=1)
+            pose = torch.cat([pose, torch.tensor([[0.0, 0.0, 0.0, 1.0]])], dim=0)
+            poses.append(torch.linalg.inv(pose))
+            fxs.append(torch.tensor(cam.params[0]))
+            fys.append(torch.tensor(cam.params[1]))
+            cxs.append(torch.tensor(cam.params[2]))
+            cys.append(torch.tensor(cam.params[3]))
+            image_filenames.append(self.data / "dense/images" / img.name)
+        poses = torch.stack(poses).float()
+        poses[..., 1:3] *= -1
+        fxs = torch.stack(fxs).float()
+        fys = torch.stack(fys).float()
+        cxs = torch.stack(cxs).float()
+        cys = torch.stack(cys).float()
+
+        num_images = len(image_filenames)
+        num_train_images = math.ceil(num_images * self.config.train_split_fraction)
+        num_eval_images = num_images - num_train_images
+        i_all = np.arange(num_images)
+        i_train = np.linspace(0, num_images - 1, num_train_images, dtype=int)
+        i_eval = np.setdiff1d(i_all, i_train)
+        i_all = torch.tensor(i_all)
+        i_train = torch.tensor(i_train, dtype=torch.long)
+        i_eval = torch.tensor(i_eval, dtype=torch.long)
+        assert len(i_eval) == num_eval_images
+        if split == "train":
+            indices = i_train
+        elif split in ["val", "test"]:
+            indices = i_eval
+        else:
+            raise ValueError(f"Unknown dataparser split {split}")
+
+        poses, transform_matrix = camera_utils.auto_orient_and_center_poses(poses, method=self.config.orientation_method, center_method=self.config.center_method)
+        # Scale poses
+        scale_factor = 1.0
+        if self.config.auto_scale_poses:
+            scale_factor /= float(torch.max(torch.abs(poses[:, :3, 3])))
+        scale_factor *= self.config.scale_factor
+        poses[:, :3, 3] *= scale_factor
+        # in x,y,z order
+        # assumes that the scene is centered at the origin
+        aabb_scale = self.config.scene_scale
+        scene_box = SceneBox(aabb=torch.tensor([[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32))
+        cameras = Cameras(
+            camera_to_worlds=poses[:, :3, :4],
+            fx=fxs,
+            fy=fys,
+            cx=cxs,
+            cy=cys,
+            camera_type=CameraType.PERSPECTIVE,
+        )
+        cameras = cameras[indices]
+        image_filenames = [image_filenames[i] for i in indices]
+        assert len(cameras) == len(image_filenames)
+        dataparser_outputs = DataparserOutputs(
+            image_filenames=image_filenames,
+            cameras=cameras,
+            scene_box=scene_box,
+            dataparser_scale=scale_factor,
+            dataparser_transform=transform_matrix,
+        )
+        return dataparser_outputs

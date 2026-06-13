@@ -1,0 +1,9 @@
+/data
+/output
+/nerfstudio
+*.egg-info
+__pycache__/
+
+/nerfstudio_uncertainty/*.ipynb
+/nerfstudio_uncertainty/scripts/phototourism
+/nerfstudio_uncertainty/scripts_previous

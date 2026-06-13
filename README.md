@@ -19,9 +19,50 @@ Evidential Neural Radiance Field (Evidential NeRF) is an uncertainty quantificat
 
 ![Overview](./assets/teaser.jpg)
 
-## Code Release
+## Installation
 
-🚧 **Code and checkpoints are coming soon.**
+The framework is built upon [nerfstudio](https://docs.nerf.studio/) v1.1.4 ([installation instructions](https://docs.nerf.studio/quickstart/installation.html)).
+```
+pip install --upgrade pip setuptools
+pip install torch==2.1.2+cu118 torchvision==0.16.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+pip install ninja git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+```
+
+Install nerfstudio by
+```
+pip install git+https://github.com/nerfstudio-project/nerfstudio.git@v1.1.4
+```
+or
+```
+git clone https://github.com/nerfstudio-project/nerfstudio.git --branch v1.1.4
+cd nerfstudio
+pip install -e .
+cd ..
+```
+
+Install the uncertainty quantification package by
+
+```
+pip install -e .
+ns-install-cli
+```
+
+## Data
+
+Run these scripts to download and process data in `data` folder.
+```
+bash nerfstudio_uncertainty/scripts/data_processing/lf.sh
+bash nerfstudio_uncertainty/scripts/data_processing/llff.sh
+bash nerfstudio_uncertainty/scripts/data_processing/robustnerf.sh
+bash nerfstudio_uncertainty/scripts/data_processing/phototourism.sh
+```
+
+## Training
+
+Scripts are in `nerfstudio_uncertainty/scripts`. Run them by
+```
+bash nerfstudio_uncertainty/scripts/lf/evidential.sh
+```
 
 ## Citation
 
